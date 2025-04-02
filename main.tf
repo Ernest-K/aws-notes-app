@@ -1,17 +1,21 @@
+# ustawienie credentials
+# $env:TF_VAR_aws_access_key_id = (aws configure get aws_access_key_id)
+# $env:TF_VAR_aws_secret_access_key = (aws configure get aws_secret_access_key)
+# $env:TF_VAR_aws_session_token = (aws configure get aws_session_token)
+
 # Konfiguracja providera AWS
 provider "aws" {
   region = "us-east-1"
-  # Credentials będą pobierane z AWS CLI, które skonfigurujesz osobno
 }
 
 # Zmienne
 variable "app_name" {
-  description = "Nazwa aplikacji"
+  description = "App name"
   default     = "notes-app"
 }
 
 variable "db_username" {
-  description = "Username dla bazy danych RDS"
+  description = "Username for RDS database"
   default     = "dbadmin"
 }
 
@@ -31,7 +35,7 @@ variable "aws_session_token" {
 }
 
 variable "db_password" {
-  description = "Hasło dla bazy danych RDS"
+  description = "Password for RDS database"
   sensitive   = true
 
   default     = "YourStrongPasswordHere"
@@ -47,15 +51,6 @@ variable "backend_docker_image" {
   default     = "264019/notes-app-backend:latest"
 }
 
-# Bucket S3 do przechowywania plików
-resource "aws_s3_bucket" "app_bucket" {
-  bucket = "${var.app_name}-files-bucket-${random_string.suffix.result}"
-
-  tags = {
-    Name        = "${var.app_name} Files"
-    Environment = "Production"
-  }
-}
 
 resource "random_string" "suffix" {
   length  = 6
@@ -63,22 +58,15 @@ resource "random_string" "suffix" {
   upper   = false
 }
 
-resource "aws_s3_bucket_ownership_controls" "app_bucket_ownership" {
-  bucket = aws_s3_bucket.app_bucket.id
-  
-  rule {
-    object_ownership = "BucketOwnerPreferred"
-  }
+# Bucket S3 do przechowywania plików
+resource "aws_s3_bucket" "app_bucket" {
+  bucket = "${var.app_name}-files-bucket-${random_string.suffix.result}"
 }
+
 
 # Konfiguracja dostępu publicznego do bucketa
 resource "aws_s3_bucket_public_access_block" "app_bucket_access" {
   bucket = aws_s3_bucket.app_bucket.id
-
-  block_public_acls       = false
-  block_public_policy     = false
-  ignore_public_acls      = false
-  restrict_public_buckets = false
 }
 
 # Polityka dostępu do bucketa
@@ -100,20 +88,27 @@ resource "aws_s3_bucket_policy" "app_bucket_policy" {
   depends_on = [aws_s3_bucket_public_access_block.app_bucket_access]
 }
 
+resource "aws_s3_bucket_ownership_controls" "app_bucket_ownership" {
+  bucket = aws_s3_bucket.app_bucket.id
+  
+  rule {
+    object_ownership = "BucketOwnerPreferred"
+  }
+}
+
 resource "aws_s3_bucket_acl" "app_bucket_acl" {
+  bucket = aws_s3_bucket.app_bucket.id
+  acl    = "public-read-write"
+
   depends_on = [
     aws_s3_bucket_ownership_controls.app_bucket_ownership,
     aws_s3_bucket_public_access_block.app_bucket_access,
   ]
-
-  bucket = aws_s3_bucket.app_bucket.id
-  acl    = "public-read-write"
 }
 
 # Konfiguracja bazy danych RDS
 resource "aws_db_instance" "app_db" {
   allocated_storage    = 20
-  storage_type         = "gp2"
   engine               = "postgres"
   engine_version       = "17.2"
   instance_class       = "db.t3.micro"
@@ -123,53 +118,6 @@ resource "aws_db_instance" "app_db" {
   parameter_group_name = "test"
   skip_final_snapshot  = true
   publicly_accessible  = true
-
-  tags = {
-    Name = "${var.app_name} Database"
-  }
-}
-
-# CloudWatch Logs dla aplikacji
-resource "aws_cloudwatch_log_group" "app_logs" {
-  name = "/aws/app/${var.app_name}"
-
-  retention_in_days = 30
-
-  tags = {
-    Application = var.app_name
-    Environment = "Production"
-  }
-}
-
-# Grupa bezpieczeństwa dla Elastic Beanstalk
-resource "aws_security_group" "eb_sg" {
-  name        = "${var.app_name}-eb-sg"
-  description = "Security group for Elastic Beanstalk"
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "${var.app_name} EB Security Group"
-  }
 }
 
 # Cognito User Pool
@@ -177,10 +125,6 @@ resource "aws_cognito_user_pool" "app_user_pool" {
   name = "${var.app_name}-user-pool"
 
   auto_verified_attributes = ["email"]
-
-  tags = {
-    Name = "${var.app_name} User Pool"
-  }
 }
 
 # Cognito User Pool Client
@@ -199,16 +143,11 @@ resource "aws_cognito_user_pool_client" "app_client" {
 # Elastic Beanstalk Application
 resource "aws_elastic_beanstalk_application" "app" {
   name        = var.app_name
-  description = "Notes Application"
 }
 
 # S3 bucket dla wersji aplikacji
 resource "aws_s3_bucket" "app_versions" {
   bucket = "${var.app_name}-app-versions"
-
-  tags = {
-    Name = "${var.app_name} Application Versions"
-  }
 }
 
 # Backend Dockerrun.aws.json file
@@ -226,8 +165,7 @@ resource "aws_s3_object" "backend_dockerrun" {
         ContainerPort = "8080",
         HostPort = "8080"
       }
-    ],
-    Logging = "/var/log/nginx"
+    ]
   })
 }
 
@@ -246,8 +184,7 @@ resource "aws_s3_object" "frontend_dockerrun" {
         ContainerPort = "80",
         HostPort = "80"
       }
-    ],
-    Logging = "/var/log/nginx"
+    ]
   })
 }
 
@@ -255,7 +192,6 @@ resource "aws_s3_object" "frontend_dockerrun" {
 resource "aws_elastic_beanstalk_application_version" "backend_version" {
   name        = "${var.app_name}-backend-version"
   application = aws_elastic_beanstalk_application.app.name
-  description = "Backend application version"
   bucket      = aws_s3_bucket.app_versions.id
   key         = aws_s3_object.backend_dockerrun.id
 }
@@ -264,7 +200,6 @@ resource "aws_elastic_beanstalk_application_version" "backend_version" {
 resource "aws_elastic_beanstalk_application_version" "frontend_version" {
   name        = "${var.app_name}-frontend-version"
   application = aws_elastic_beanstalk_application.app.name
-  description = "Frontend application version"
   bucket      = aws_s3_bucket.app_versions.id
   key         = aws_s3_object.frontend_dockerrun.id
 }
@@ -295,9 +230,9 @@ resource "aws_elastic_beanstalk_environment" "backend_env" {
   }
 
   setting {
-  namespace = "aws:elasticbeanstalk:application:environment"
-  name      = "AWS_ACCESS_KEY_ID"
-  value     = var.aws_access_key_id
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "AWS_ACCESS_KEY_ID"
+    value     = var.aws_access_key_id
   }
 
   setting {
@@ -338,38 +273,8 @@ resource "aws_elastic_beanstalk_environment" "backend_env" {
 
   setting {
     namespace = "aws:autoscaling:launchconfiguration"
-    name      = "SecurityGroups"
-    value     = aws_security_group.eb_sg.name
-  }
-
-  setting {
-    namespace = "aws:autoscaling:launchconfiguration"
     name      = "IamInstanceProfile"
     value     = "LabInstanceProfile"
-  }
-
-  setting {
-    namespace = "aws:elasticbeanstalk:environment"
-    name      = "LoadBalancerType"
-    value     = "application"
-  }
-
-  setting {
-    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
-    name      = "StreamLogs"
-    value     = "true"
-  }
-
-  setting {
-    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
-    name      = "DeleteOnTerminate"
-    value     = "false"
-  }
-
-  setting {
-    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
-    name      = "RetentionInDays"
-    value     = "30"
   }
 }
 
@@ -388,38 +293,8 @@ resource "aws_elastic_beanstalk_environment" "frontend_env" {
 
   setting {
     namespace = "aws:autoscaling:launchconfiguration"
-    name      = "SecurityGroups"
-    value     = aws_security_group.eb_sg.name
-  }
-
-  setting {
-    namespace = "aws:autoscaling:launchconfiguration"
     name      = "IamInstanceProfile"
     value     = "LabInstanceProfile"
-  }
-
-  setting {
-    namespace = "aws:elasticbeanstalk:environment"
-    name      = "LoadBalancerType"
-    value     = "application"
-  }
-
-  setting {
-    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
-    name      = "StreamLogs"
-    value     = "true"
-  }
-
-  setting {
-    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
-    name      = "DeleteOnTerminate"
-    value     = "false"
-  }
-
-  setting {
-    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
-    name      = "RetentionInDays"
-    value     = "30"
   }
 }
 
