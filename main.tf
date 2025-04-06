@@ -127,8 +127,13 @@ resource "aws_cognito_user_pool_client" "app_client" {
 }
 
 # Elastic Beanstalk Application
-resource "aws_elastic_beanstalk_application" "app" {
-  name = var.app_name
+resource "aws_elastic_beanstalk_application" "app_backend" {
+  name = "${var.app_name}-backend"
+}
+
+# Elastic Beanstalk Application
+resource "aws_elastic_beanstalk_application" "app_frontend" {
+  name = "${var.app_name}-frontend"
 }
 
 # S3 bucket dla wersji aplikacji
@@ -177,7 +182,7 @@ resource "aws_s3_object" "frontend_dockerrun" {
 # Backend Application Version
 resource "aws_elastic_beanstalk_application_version" "backend_version" {
   name        = "${var.app_name}-backend-version"
-  application = aws_elastic_beanstalk_application.app.name
+  application = aws_elastic_beanstalk_application.app_backend.name
   bucket      = aws_s3_bucket.app_versions.id
   key         = aws_s3_object.backend_dockerrun.id
 }
@@ -185,7 +190,7 @@ resource "aws_elastic_beanstalk_application_version" "backend_version" {
 # Frontend Application Version
 resource "aws_elastic_beanstalk_application_version" "frontend_version" {
   name        = "${var.app_name}-frontend-version"
-  application = aws_elastic_beanstalk_application.app.name
+  application = aws_elastic_beanstalk_application.app_frontend.name
   bucket      = aws_s3_bucket.app_versions.id
   key         = aws_s3_object.frontend_dockerrun.id
 }
@@ -193,7 +198,7 @@ resource "aws_elastic_beanstalk_application_version" "frontend_version" {
 # Elastic Beanstalk Backend Environment
 resource "aws_elastic_beanstalk_environment" "backend_env" {
   name                = "${var.app_name}-backend-env"
-  application         = aws_elastic_beanstalk_application.app.name
+  application         = aws_elastic_beanstalk_application.app_backend.name
   solution_stack_name = "64bit Amazon Linux 2023 v4.5.0 running Docker"
   version_label       = aws_elastic_beanstalk_application_version.backend_version.name
 
@@ -267,7 +272,7 @@ resource "aws_elastic_beanstalk_environment" "backend_env" {
 # Elastic Beanstalk Frontend Environment
 resource "aws_elastic_beanstalk_environment" "frontend_env" {
   name                = "${var.app_name}-frontend-env"
-  application         = aws_elastic_beanstalk_application.app.name
+  application         = aws_elastic_beanstalk_application.app_frontend.name
   solution_stack_name = "64bit Amazon Linux 2023 v4.5.0 running Docker"
   version_label       = aws_elastic_beanstalk_application_version.frontend_version.name
 
