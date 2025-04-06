@@ -1,7 +1,12 @@
-# ustawienie credentials
+# ustawienie credentials (windows)
 # $env:TF_VAR_aws_access_key_id = (aws configure get aws_access_key_id)
 # $env:TF_VAR_aws_secret_access_key = (aws configure get aws_secret_access_key)
 # $env:TF_VAR_aws_session_token = (aws configure get aws_session_token)
+
+# ustawienie credentials (linux)
+# export TF_VAR_aws_access_key_id=$(aws configure get aws_access_key_id)
+# export TF_VAR_aws_secret_access_key=$(aws configure get aws_secret_access_key)
+# export TF_VAR_aws_session_token=$(aws configure get aws_session_token)
 
 # Konfiguracja providera AWS
 provider "aws" {
@@ -38,7 +43,7 @@ variable "db_password" {
   description = "Password for RDS database"
   sensitive   = true
 
-  default     = "YourStrongPasswordHere"
+  default = "YourStrongPasswordHere"
 }
 
 variable "frontend_docker_image" {
@@ -69,28 +74,9 @@ resource "aws_s3_bucket_public_access_block" "app_bucket_access" {
   bucket = aws_s3_bucket.app_bucket.id
 }
 
-# Polityka dostępu do bucketa
-resource "aws_s3_bucket_policy" "app_bucket_policy" {
-  bucket = aws_s3_bucket.app_bucket.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action    = ["s3:GetObject"]
-        Effect    = "Allow"
-        Resource  = "${aws_s3_bucket.app_bucket.arn}/*"
-        Principal = "*"
-      },
-    ]
-  })
-
-  depends_on = [aws_s3_bucket_public_access_block.app_bucket_access]
-}
-
 resource "aws_s3_bucket_ownership_controls" "app_bucket_ownership" {
   bucket = aws_s3_bucket.app_bucket.id
-  
+
   rule {
     object_ownership = "BucketOwnerPreferred"
   }
@@ -129,10 +115,10 @@ resource "aws_cognito_user_pool" "app_user_pool" {
 
 # Cognito User Pool Client
 resource "aws_cognito_user_pool_client" "app_client" {
-  name                = "${var.app_name}-client"
-  user_pool_id        = aws_cognito_user_pool.app_user_pool.id
+  name         = "${var.app_name}-client"
+  user_pool_id = aws_cognito_user_pool.app_user_pool.id
 
-  generate_secret     = false
+  generate_secret = false
   explicit_auth_flows = [
     "ALLOW_USER_PASSWORD_AUTH",
     "ALLOW_REFRESH_TOKEN_AUTH",
@@ -142,7 +128,7 @@ resource "aws_cognito_user_pool_client" "app_client" {
 
 # Elastic Beanstalk Application
 resource "aws_elastic_beanstalk_application" "app" {
-  name        = var.app_name
+  name = var.app_name
 }
 
 # S3 bucket dla wersji aplikacji
@@ -152,18 +138,18 @@ resource "aws_s3_bucket" "app_versions" {
 
 # Backend Dockerrun.aws.json file
 resource "aws_s3_object" "backend_dockerrun" {
-  bucket  = aws_s3_bucket.app_versions.id
-  key     = "backend-dockerrun.aws.json"
+  bucket = aws_s3_bucket.app_versions.id
+  key    = "backend-dockerrun.aws.json"
   content = jsonencode({
     AWSEBDockerrunVersion = "1",
     Image = {
-      Name = var.backend_docker_image,
+      Name   = var.backend_docker_image,
       Update = "true"
     },
     Ports = [
       {
         ContainerPort = "8080",
-        HostPort = "8080"
+        HostPort      = "8080"
       }
     ]
   })
@@ -171,18 +157,18 @@ resource "aws_s3_object" "backend_dockerrun" {
 
 # Frontend Dockerrun.aws.json file
 resource "aws_s3_object" "frontend_dockerrun" {
-  bucket  = aws_s3_bucket.app_versions.id
-  key     = "frontend-dockerrun.aws.json"
+  bucket = aws_s3_bucket.app_versions.id
+  key    = "frontend-dockerrun.aws.json"
   content = jsonencode({
     AWSEBDockerrunVersion = "1",
     Image = {
-      Name = var.frontend_docker_image,
+      Name   = var.frontend_docker_image,
       Update = "true"
     },
     Ports = [
       {
         ContainerPort = "80",
-        HostPort = "80"
+        HostPort      = "80"
       }
     ]
   })
